@@ -1,0 +1,417 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Socket.IO Chat & Performance Dashboard</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Chart.js CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        margin: 0;
+        padding: 20px;
+      }
+      #chat {
+        border: 1px solid #ccc;
+        padding: 10px;
+        height: 300px;
+        overflow-y: auto;
+        margin-bottom: 10px;
+        background: #f9fafb;
+      }
+      #message-input {
+        padding: 8px;
+        border: 1px solid #d1d5db;
+        border-radius: 4px;
+      }
+      #send-button,
+      #get-local-users,
+      #get-total-users {
+        padding: 8px 16px;
+        margin-right: 8px;
+        border-radius: 4px;
+      }
+      #server-info {
+        margin-bottom: 10px;
+        font-weight: bold;
+        color: #374151;
+      }
+      .chart-container {
+        max-width: 600px; /* Increased from 400px */
+        min-height: 300px; /* Added min-height for better visibility */
+        margin: 0 auto;
+      }
+    </style>
+  </head>
+  <body class="bg-gray-100">
+    <div class="max-w-4xl mx-auto">
+      <!-- Performance Dashboard -->
+      <h2 class="text-xl font-semibold mb-4 text-gray-800">
+        Performance Metrics
+      </h2>
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <!-- Connected Clients Chart -->
+        <div class="bg-white p-4 rounded-lg shadow">
+          <h3 class="text-lg font-medium text-gray-700 mb-2">
+            Connected Clients
+          </h3>
+          <div class="chart-container">
+            <canvas id="clientsChart" height="250"></canvas> <!-- Added height -->
+          </div>
+        </div>
+
+        <!-- Latency Chart -->
+        <div class="bg-white p-4 rounded-lg shadow">
+          <h3 class="text-lg font-medium text-gray-700 mb-2">
+            Message Latency (ms)
+          </h3>
+          <div class="chart-container">
+            <canvas id="latencyChart" height="250"></canvas> <!-- Added height -->
+          </div>
+        </div>
+        <!-- Messages Per Second Chart -->
+        <div class="bg-white p-4 rounded-lg shadow">
+          <h3 class="text-lg font-medium text-gray-700 mb-2">
+            Messages Per Second
+          </h3>
+          <div class="chart-container">
+            <canvas id="mpsChart" height="250"></canvas> <!-- Added height -->
+          </div>
+        </div>
+
+        <!-- Server Count and Errors -->
+        <div class="bg-white p-4 rounded-lg shadow">
+          <h3 class="text-lg font-medium text-gray-700 mb-2">System Stats</h3>
+          <div class="chart-container">
+            <canvas id="serversChart" height="250"></canvas> <!-- Added height -->
+          </div>
+          <p class="mt-2 text-sm text-gray-600">
+            Connection Errors: <span id="connectionErrors">0</span>
+          </p>
+        </div>
+      </div>
+
+      <!-- Chat Section -->
+      <div id="server-info" class="text-gray-700">Connecting...</div>
+      <div id="chat" class="rounded-lg shadow mb-4"></div>
+      <div class="flex gap-2 mb-6">
+        <input
+          type="text"
+          id="message-input"
+          class="flex-grow"
+          placeholder="Type a message..."
+        />
+        <button
+          id="send-button"
+          onclick="sendMessage()"
+          class="bg-blue-500 text-white hover:bg-blue-600"
+        >
+          Send
+        </button>
+        <button
+          id="get-local-users"
+          onclick="getLocalUsers()"
+          class="bg-gray-500 text-white hover:bg-gray-600"
+        >
+          Get Local Users
+        </button>
+        <button
+          id="get-total-users"
+          onclick="getTotalUsers()"
+          class="bg-gray-500 text-white hover:bg-gray-600"
+        >
+          Get Total Users
+        </button>
+      </div>
+    </div>
+
+    <!-- Socket.IO Client -->
+    <script src="https://cdn.jsdelivr.net/npm/socket.io-client@4/dist/socket.io.min.js"></script>
+    <script>
+      let socket = null;
+      const maxDataPoints = 20; // Number of data points to display in charts
+      const latencyData = [];
+      const mpsData = [];
+      const totalClientsData = [];
+      const localClientsData = [];
+      const serverCountData = [];
+      const timestamps = [];
+
+      // Initialize Charts
+      const ctxLatency = document
+        .getElementById("latencyChart")
+        .getContext("2d");
+      const latencyChart = new Chart(ctxLatency, {
+        type: "line",
+        data: {
+          labels: timestamps,
+          datasets: [
+            {
+              label: "Latency (ms)",
+              data: latencyData,
+              borderColor: "#3b82f6",
+              fill: false,
+              tension: 0.1,
+            },
+          ],
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          scales: {
+            y: {
+              beginAtZero: true,
+              title: { display: true, text: "Latency (ms)" },
+            },
+            x: { title: { display: true, text: "Time" } },
+          },
+        },
+      });
+
+      const ctxMps = document.getElementById("mpsChart").getContext("2d");
+      const mpsChart = new Chart(ctxMps, {
+        type: "line",
+        data: {
+          labels: timestamps,
+          datasets: [
+            {
+              label: "Messages/s",
+              data: mpsData,
+              borderColor: "#10b981",
+              fill: false,
+              tension: 0.1,
+            },
+          ],
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          scales: {
+            y: {
+              beginAtZero: true,
+              title: { display: true, text: "Messages/s" },
+            },
+            x: { title: { display: true, text: "Time" } },
+          },
+        },
+      });
+
+      const ctxClients = document
+        .getElementById("clientsChart")
+        .getContext("2d");
+      const clientsChart = new Chart(ctxClients, {
+        type: "line",
+        data: {
+          labels: timestamps,
+          datasets: [
+            {
+              label: "Total Clients",
+              data: totalClientsData,
+              borderColor: "#ef4444",
+              fill: false,
+              tension: 0.1,
+            },
+            {
+              label: "Local Clients",
+              data: localClientsData,
+              borderColor: "#8b5cf6",
+              fill: false,
+              tension: 0.1,
+            },
+          ],
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          scales: {
+            y: { beginAtZero: true, title: { display: true, text: "Clients" } },
+            x: { title: { display: true, text: "Time" } },
+          },
+        },
+      });
+
+      const ctxServers = document
+        .getElementById("serversChart")
+        .getContext("2d");
+      const serversChart = new Chart(ctxServers, {
+        type: "line",
+        data: {
+          labels: timestamps,
+          datasets: [
+            {
+              label: "Server Count",
+              data: serverCountData,
+              borderColor: "#f59e0b",
+              fill: false,
+              tension: 0.1,
+            },
+          ],
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          scales: {
+            y: { beginAtZero: true, title: { display: true, text: "Servers" } },
+            x: { title: { display: true, text: "Time" } },
+          },
+        },
+      });
+
+      // Connect to the server
+      function connectToServer() {
+        if (socket) {
+          socket.disconnect();
+        }
+        socket = io("/", { reconnection: true, transports: ["websocket"] });
+
+        socket.on("connect", () => {
+          addMessage(`Connected to ${window.location.origin}`);
+          document.getElementById(
+            "server-info"
+          ).textContent = `Connected to: ${window.location.origin}`;
+          startMetricsPolling();
+        });
+
+        socket.on("message", (data, ...args) => {
+          addMessage(`Received: ${data} (args: ${args.join(", ")})`);
+        });
+
+        socket.on("recv_message", (data, ...args) => {
+          addMessage(
+            `Received: ${JSON.stringify(data)} (args: ${args.join(", ")})`
+          );
+        });
+
+        socket.on("local-users", (count) => {
+          addMessage(`Local users: ${count}`);
+        });
+
+        socket.on("total-users", (count) => {
+          addMessage(`Total users: ${count}`);
+        });
+
+        socket.on("metrics-update", (metrics) => {
+          updateMetrics(metrics);
+        });
+
+        socket.on("pong", (serverTimestamp) => {
+          const latency = Date.now() - parseInt(serverTimestamp);
+          socket.emit("metrics-latency", latency);
+        });
+
+        socket.on("disconnect", () => {
+          addMessage("Disconnected from server");
+          document.getElementById("server-info").textContent = "Disconnected";
+        });
+
+        socket.on("connect_error", (err) => {
+          addMessage(`Connection error: ${err.message}`);
+        });
+      }
+
+      // Send a message
+      function sendMessage() {
+        const input = document.getElementById("message-input");
+        const message = input.value.trim();
+        if (message && socket && socket.connected) {
+          socket.emit("message", message);
+          addMessage(`Sent: ${message}`);
+          input.value = "";
+        } else if (!socket.connected) {
+          addMessage("Error: Not connected to server");
+        }
+      }
+
+      // Request local user count
+      function getLocalUsers() {
+        if (socket && socket.connected) {
+          socket.emit("get-local-users");
+        } else {
+          addMessage("Error: Not connected to server");
+        }
+      }
+
+      // Request total user count
+      function getTotalUsers() {
+        if (socket && socket.connected) {
+          socket.emit("get-total-users");
+        } else {
+          addMessage("Error: Not connected to server");
+        }
+      }
+
+      // Add a message to the chat window
+      function addMessage(text) {
+        const chat = document.getElementById("chat");
+        const messageEl = document.createElement("div");
+        messageEl.textContent = text;
+        messageEl.className = "text-gray-800 text-sm py-1";
+        chat.appendChild(messageEl);
+        chat.scrollTop = chat.scrollHeight;
+      }
+
+      // Update metrics and charts
+      function updateMetrics(metrics) {
+        const now = new Date().toLocaleTimeString();
+        if (timestamps.length >= maxDataPoints) {
+          timestamps.shift();
+          latencyData.shift();
+          mpsData.shift();
+          totalClientsData.shift();
+          localClientsData.shift();
+          serverCountData.shift();
+        }
+        timestamps.push(now);
+        latencyData.push(metrics.latency || 0);
+        mpsData.push(metrics.messagesPerSecond || 0);
+        totalClientsData.push(metrics.totalClients || 0);
+        localClientsData.push(metrics.localClients || 0);
+        serverCountData.push(metrics.serverCount || 0);
+        document.getElementById("connectionErrors").textContent =
+          metrics.connectionErrors || 0;
+
+        latencyChart.update();
+        mpsChart.update();
+        clientsChart.update();
+        serversChart.update();
+      }
+
+      // Get polling interval from URL query parameter
+      function getPollingInterval() {
+        const params = new URLSearchParams(window.location.search);
+        const interval = parseInt(params.get("interval"));
+        // Return the interval if it's a valid number, otherwise default to 5000ms (5 seconds)
+        return !isNaN(interval) && interval > 0 ? interval : 5000;
+      }
+
+      // Poll metrics at the specified interval
+      let metricsInterval = null;
+      function startMetricsPolling() {
+        if (metricsInterval) clearInterval(metricsInterval);
+        const interval = getPollingInterval();
+        metricsInterval = setInterval(() => {
+          if (socket && socket.connected) {
+            socket.emit("get-metrics");
+            // Send ping for latency
+            socket.emit("ping", Date.now().toString());
+          }
+        }, interval);
+      }
+
+      // Connect to the server on page load
+      connectToServer();
+
+      // Allow sending messages with Enter key
+      document
+        .getElementById("message-input")
+        .addEventListener("keypress", (e) => {
+          if (e.key === "Enter") {
+            sendMessage();
+          }
+        });
+    </script>
+  </body>
+</html>

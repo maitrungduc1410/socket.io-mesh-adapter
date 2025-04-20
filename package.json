@@ -1,0 +1,56 @@
+{
+  "name": "socket.io-mesh-adapter",
+  "version": "0.0.3",
+  "displayName": "SocketIO Mesh Adapter",
+  "description": "SocketIO Mesh Adapter is a Socket.IO adapter that allows you to scale your Socket.IO application across multiple servers using a mesh network architecture. It provides a way for Socket.IO servers to communicate with each other and share events, making it easier to build distributed applications.",
+  "main": "./dist/mesh-adapter.js",
+  "files": [
+    "dist",
+    "src"
+  ],
+  "bin": {
+    "discovery-server": "./dist/discovery-server.js"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "dev": "vite-node server.ts",
+    "dev1": "export PORT=3001 MESH_WS_PORT=4001 && npm run dev",
+    "dev:discovery": "node dist/discovery-server.js",
+    "build": "tsc"
+  },
+  "keywords": [
+    "socket.io",
+    "mesh",
+    "adapter",
+    "discovery",
+    "server",
+    "scale"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "@msgpack/msgpack": "^3.1.1",
+    "socket.io": "^4.8.1",
+    "socket.io-adapter": "^2.5.5",
+    "socket.io-mesh-adapter": "^0.0.2",
+    "uuid": "^11.1.0",
+    "ws": "^8.18.1"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.1",
+    "@types/ws": "^8.18.1",
+    "express": "^5.1.0",
+    "nodemon": "^3.1.9",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.8.3",
+    "vite-node": "^3.1.1"
+  },
+  "homepage": "https://github.com/maitrungduc1410/socket.io-mesh-adapter",
+  "author": "maitrungduc1410@gmail.com",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/maitrungduc1410/socket.io-mesh-adapter.git"
+  },
+  "bugs": {
+    "url": "https://github.com/maitrungduc1410/socket.io-mesh-adapter/issues"
+  }
+}
