@@ -1,22 +1,22 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: load-test
+  name: liveapp
   labels:
-    app: load-test
-  namespace: load-test
+    app: liveapp
+  namespace: liveapp
 spec:
   replicas: 10
   selector:
     matchLabels:
-      app: load-test
+      app: liveapp
   template:
     metadata:
       labels:
-        app: load-test
+        app: liveapp
     spec:
       containers:
-        - name: load-test
+        - name: liveapp
           image: maitrungduc1410/socketio:app
           imagePullPolicy: Always # Since we reuse tags, we should always pull
           env:
@@ -41,8 +41,8 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: load-test
-  namespace: load-test
+  name: liveapp
+  namespace: liveapp
 spec:
   type: ClusterIP
   ports:
@@ -51,4 +51,4 @@ spec:
       port: 80
       targetPort: http
   selector:
-    app: load-test
+    app: liveapp

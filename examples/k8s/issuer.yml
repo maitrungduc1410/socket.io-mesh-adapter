@@ -1,8 +1,8 @@
 apiVersion: cert-manager.io/v1
 kind: Issuer
 metadata:
-  name: letsencrypt-load
-  namespace: load-test
+  name: letsencrypt-liveapp
+  namespace: liveapp
 spec:
   acme:
     # The ACME server URL
@@ -11,7 +11,7 @@ spec:
     email: me@example.com
     # Name of a secret used to store the ACME account private key
     privateKeySecretRef:
-      name: letsencrypt-load
+      name: letsencrypt-liveapp
     # Enable the HTTP-01 challenge provider
     solvers:
     - http01:

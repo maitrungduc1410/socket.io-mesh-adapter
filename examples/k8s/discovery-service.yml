@@ -4,7 +4,7 @@ metadata:
   name: discovery-service
   labels:
     app: discovery-service
-  namespace: load-test
+  namespace: liveapp
 spec:
   replicas: 1
   selector:
@@ -34,7 +34,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: discovery-service
-  namespace: load-test
+  namespace: liveapp
 spec:
   type: ClusterIP
   ports:

@@ -1,24 +1,24 @@
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: load-test
-  namespace: load-test
+  name: liveapp
+  namespace: liveapp
   annotations:
-    cert-manager.io/issuer: "letsencrypt-load"
+    cert-manager.io/issuer: "letsencrypt-liveapp"
 spec:
   ingressClassName: nginx
   tls:
   - hosts:
-    - test.example.com
-    secretName: load-tls
+    - liveapp.example.com
+    secretName: liveapp-tls
   rules:
-  - host: test.example.com
+  - host: liveapp.example.com
     http:
       paths:
       - path: /
         pathType: Prefix
         backend:
           service:
-            name: load-test
+            name: liveapp
             port:
               name: http
