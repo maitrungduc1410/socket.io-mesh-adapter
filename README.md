@@ -3,8 +3,8 @@
 - [Features](#features)
 - [Installation](#installation)
 - [Usage](#usage)
-   * [Setting Up the Adapter](#setting-up-the-adapter)
    * [Running the Discovery Service](#running-the-discovery-service)
+   * [Setting Up the Adapter](#setting-up-the-adapter)
 - [Options](#options)
 - [Benchmark](#benchmark)
 - [Examples](#examples)
@@ -38,6 +38,17 @@ npm install socket.io-mesh-adapter
 ```
 
 # Usage
+
+## Running the Discovery Service
+The discovery service is responsible for maintaining a list of active servers in the mesh network. You should always to start discovery service **before running your app**.
+
+You can run it using the provided binary:
+```
+npx socket.io-mesh-adapter@latest
+```
+
+The discovery service listens on port `8000` by default. You can change the port using the `PORT` environment variable.
+
 ## Setting Up the Adapter
 
 To use the adapter, you need to configure it with your Socket.IO server. Here's an example:
@@ -60,15 +71,6 @@ httpServer.listen(3000, () => {
   console.log("Socket.IO server is running on port 3000");
 });
 ```
-
-## Running the Discovery Service
-The discovery service is responsible for maintaining a list of active servers in the mesh network. You can run it using the provided binary:
-
-```
-npx socket.io-mesh-adapter@latest
-```
-
-The discovery service listens on port `8000` by default. You can change the port using the `PORT` environment variable.
 
 # Options
 
