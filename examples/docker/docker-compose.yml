@@ -1,0 +1,17 @@
+services:
+  app:
+    image: maitrungduc1410/socketio:app
+    ports:
+      - 3000:3000
+    environment:
+      - MESH_WS_IP=app
+      - MESH_DISCOVERY_SERVICE_ADDRESS=ws://discovery-svc:8000
+  app1:
+    image: maitrungduc1410/socketio:app
+    ports:
+      - 3001:3000
+    environment:
+      - MESH_WS_IP=app1
+      - MESH_DISCOVERY_SERVICE_ADDRESS=ws://discovery-svc:8000
+  discovery-svc:
+    image: maitrungduc1410/socketio:discovery-svc

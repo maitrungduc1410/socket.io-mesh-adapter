@@ -1,0 +1,19 @@
+{
+  "name": "local",
+  "version": "1.0.0",
+  "description": "",
+  "main": "server.js",
+  "scripts": {
+    "dev1": "node server.js",
+    "dev2": "export PORT=3001 MESH_WS_PORT=4001 && npm run dev1",
+    "dev:discovery": "discovery-server"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "express": "^5.1.0",
+    "socket.io": "^4.8.1",
+    "socket.io-mesh-adapter": "^0.0.2"
+  }
+}

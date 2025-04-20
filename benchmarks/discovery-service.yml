@@ -1,0 +1,46 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: discovery-service
+  labels:
+    app: discovery-service
+  namespace: load-test
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: discovery-service
+  template:
+    metadata:
+      labels:
+        app: discovery-service
+    spec:
+      containers:
+        - name: discovery-service
+          image: maitrungduc1410/socketio:discovery-svc
+          imagePullPolicy: Always # Since we reuse tags, we should always pull
+          ports:
+            - containerPort: 8000
+              name: http
+          resources:
+            requests:
+              cpu: "64m"
+              memory: "128Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: discovery-service
+  namespace: load-test
+spec:
+  type: ClusterIP
+  ports:
+    - name: http
+      protocol: TCP
+      port: 8000
+      targetPort: http
+  selector:
+    app: discovery-service

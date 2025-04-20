@@ -1,0 +1,54 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: load-test
+  labels:
+    app: load-test
+  namespace: load-test
+spec:
+  replicas: 10
+  selector:
+    matchLabels:
+      app: load-test
+  template:
+    metadata:
+      labels:
+        app: load-test
+    spec:
+      containers:
+        - name: load-test
+          image: maitrungduc1410/socketio:app
+          imagePullPolicy: Always # Since we reuse tags, we should always pull
+          env:
+            # use downward API to get the pod IP
+            - name: MESH_WS_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+            - name: MESH_DISCOVERY_SERVICE_ADDRESS
+              value: "ws://discovery-service:8000"
+          ports:
+            - containerPort: 3000
+              name: http
+          # resources:
+          #   requests:
+          #     cpu: "128m"
+          #     memory: "256Mi"
+          #   limits:
+          #     cpu: "1"
+          #     memory: "1Gi"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: load-test
+  namespace: load-test
+spec:
+  type: ClusterIP
+  ports:
+    - name: http
+      protocol: TCP
+      port: 80
+      targetPort: http
+  selector:
+    app: load-test

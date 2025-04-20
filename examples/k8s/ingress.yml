@@ -1,0 +1,24 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: load-test
+  namespace: load-test
+  annotations:
+    cert-manager.io/issuer: "letsencrypt-load"
+spec:
+  ingressClassName: nginx
+  tls:
+  - hosts:
+    - test.example.com
+    secretName: load-tls
+  rules:
+  - host: test.example.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: load-test
+            port:
+              name: http

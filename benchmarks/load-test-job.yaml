@@ -1,0 +1,23 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: load-test-job
+  namespace: load-test
+  labels:
+    app: load-test-job
+spec:
+  ttlSecondsAfterFinished: 0
+  parallelism: 11
+  template:
+    spec:
+      containers:
+        - name: load-test-job
+          imagePullPolicy: Always
+          image: maitrungduc1410/socketio:load-test
+          env:
+            - name: MAX_CLIENTS
+              value: "30000"
+            - name: URL
+              value: "http://load-test:80"
+      restartPolicy: Never
+  backoffLimit: 1
