@@ -1,8 +1,8 @@
 {
   "name": "socket.io-mesh-adapter",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "displayName": "SocketIO Mesh Adapter",
-  "description": "SocketIO Mesh Adapter is a Socket.IO adapter that allows you to scale your Socket.IO application across multiple servers using a mesh network architecture. It provides a way for Socket.IO servers to communicate with each other and share events, making it easier to build distributed applications.",
+  "description": "The first adapter that truly scales your SocketIO app horizontally 🚀",
   "main": "./dist/mesh-adapter.js",
   "files": [
     "dist"
@@ -23,7 +23,13 @@
     "adapter",
     "discovery",
     "server",
-    "scale"
+    "scale",
+    "mesh adapter",
+    "horizontal scaling",
+    "socket.io adapter",
+    "socket.io mesh",
+    "socket.io horizontal scaling",
+    "socket.io mesh adapter"
   ],
   "license": "MIT",
   "dependencies": {
