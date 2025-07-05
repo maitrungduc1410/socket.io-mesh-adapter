@@ -30,7 +30,8 @@ type Message = {
     // | "del-all"
     | "add-sockets"
     | "del-sockets"
-    | "disconnect-sockets";
+    | "disconnect-sockets"
+    | "server-side-emit";
   packet?: { type: number; data: string[]; nsp: string };
   opts?: BroadcastOptions;
   nsp: string;
@@ -291,6 +292,8 @@ export class MeshAdapter extends Adapter {
             }
           } else if (data.type === "disconnect-sockets") {
             self.disconnectSockets(opts, !!data.close);
+          } else if (data.type === "server-side-emit") {
+            self.nsp._onServerSideEmit(data.packet);
           }
         } catch (err) {
           console.error(`Error parsing wss message: ${err}`);
@@ -999,6 +1002,28 @@ export class MeshAdapter extends Adapter {
     };
 
     let message = encode(messageData);
+    for (const [serverId, server] of this.servers) {
+      if (server.ws.readyState === WebSocket.OPEN) {
+        try {
+          server.ws.send(message, { binary: true });
+        } catch (err) {
+          console.error(`Failed to send to server ${serverId}: ${err}`);
+        }
+      }
+    }
+  }
+
+  serverSideEmit(packet: any[]): void {
+    console.warn("serverSideEmit:", packet);
+
+    const messageData = {
+      type: "server-side-emit",
+      packet,
+      serverId: this.serverId,
+      nsp: this.nspName,
+    };
+    const message = encode(messageData);
+
     for (const [serverId, server] of this.servers) {
       if (server.ws.readyState === WebSocket.OPEN) {
         try {
