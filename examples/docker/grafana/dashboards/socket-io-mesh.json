@@ -1,0 +1,295 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "liveNow": true,
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "Peers connected per pod",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "Number of mesh peers each pod currently has an open WebSocket to. In a healthy N-pod mesh this should be N-1 everywhere.",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "color": { "mode": "palette-classic" },
+          "custom": { "lineWidth": 2, "fillOpacity": 10 }
+        }
+      },
+      "options": {
+        "legend": { "displayMode": "table", "placement": "right" },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "expr": "socketio_mesh_peers_connected{job=\"socketio-mesh\"}",
+          "legendFormat": "{{instance}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Mesh health",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "sum(peers_connected) / sum(peers_expected). 100% means every pod sees every other pod.",
+      "gridPos": { "h": 8, "w": 6, "x": 12, "y": 0 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "max": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "orange", "value": 0.5 },
+              { "color": "green", "value": 0.95 }
+            ]
+          }
+        }
+      },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "colorMode": "background",
+        "graphMode": "area",
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "expr": "sum(socketio_mesh_peers_connected) / clamp_min(sum(socketio_mesh_peers_expected), 1)",
+          "legendFormat": "health",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Discovery roster size",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "Servers currently registered with the discovery service.",
+      "gridPos": { "h": 8, "w": 6, "x": 18, "y": 0 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "green", "value": 1 }
+            ]
+          }
+        }
+      },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "value_and_name"
+      },
+      "targets": [
+        {
+          "expr": "socketio_mesh_discovery_servers_registered",
+          "legendFormat": "registered",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "Mesh messages/sec by type",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "Rate of mesh frames sent across all pods, stacked by message type.",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "min": 0,
+          "color": { "mode": "palette-classic" },
+          "custom": { "lineWidth": 1, "fillOpacity": 30, "stacking": { "mode": "normal" } }
+        }
+      },
+      "options": {
+        "legend": { "displayMode": "table", "placement": "right", "calcs": ["mean", "max"] },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "expr": "sum by (type) (rate(socketio_mesh_messages_sent_total[1m]))",
+          "legendFormat": "{{type}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "Cluster request latency (p50/p95/p99)",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "Latency of fetchSockets / broadcastWithAck / serverSideEmit requests.",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "min": 0,
+          "color": { "mode": "palette-classic" },
+          "custom": { "lineWidth": 2, "fillOpacity": 0 }
+        }
+      },
+      "options": {
+        "legend": { "displayMode": "table", "placement": "right" },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.5, sum by (le, kind) (rate(socketio_mesh_request_duration_seconds_bucket[5m])))",
+          "legendFormat": "{{kind}} p50",
+          "refId": "A"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum by (le, kind) (rate(socketio_mesh_request_duration_seconds_bucket[5m])))",
+          "legendFormat": "{{kind}} p95",
+          "refId": "B"
+        },
+        {
+          "expr": "histogram_quantile(0.99, sum by (le, kind) (rate(socketio_mesh_request_duration_seconds_bucket[5m])))",
+          "legendFormat": "{{kind}} p99",
+          "refId": "C"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "Mesh frame size (p50/p95/p99)",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "Distribution of mesh frame sizes in bytes, by direction.",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "min": 0,
+          "color": { "mode": "palette-classic" },
+          "custom": { "lineWidth": 2, "fillOpacity": 0 }
+        }
+      },
+      "options": {
+        "legend": { "displayMode": "table", "placement": "right" },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.5, sum by (le, direction) (rate(socketio_mesh_message_bytes_bucket[5m])))",
+          "legendFormat": "{{direction}} p50",
+          "refId": "A"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum by (le, direction) (rate(socketio_mesh_message_bytes_bucket[5m])))",
+          "legendFormat": "{{direction}} p95",
+          "refId": "B"
+        },
+        {
+          "expr": "histogram_quantile(0.99, sum by (le, direction) (rate(socketio_mesh_message_bytes_bucket[5m])))",
+          "legendFormat": "{{direction}} p99",
+          "refId": "C"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "type": "table",
+      "title": "Peer drops (last 5m) by reason",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "Increase in peer_drops_total over the last 5 minutes, grouped by drop reason and pod.",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "orange", "value": 1 },
+              { "color": "red", "value": 5 }
+            ]
+          },
+          "custom": { "align": "auto", "filterable": true }
+        }
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm"
+      },
+      "targets": [
+        {
+          "expr": "increase(socketio_mesh_peer_drops_total[5m])",
+          "format": "table",
+          "instant": true,
+          "refId": "A"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": { "Time": true, "__name__": true, "job": true, "component": true },
+            "indexByName": {},
+            "renameByName": {
+              "instance": "pod",
+              "reason": "reason",
+              "Value": "drops (5m)"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "type": "timeseries",
+      "title": "Local Socket.IO clients per pod",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "Number of Socket.IO clients connected to each pod (sampled every 5s).",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 24 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "color": { "mode": "palette-classic" },
+          "custom": { "lineWidth": 2, "fillOpacity": 10, "stacking": { "mode": "normal" } }
+        }
+      },
+      "options": {
+        "legend": { "displayMode": "table", "placement": "right", "calcs": ["mean", "max"] },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "expr": "socketio_mesh_io_clients{job=\"socketio-mesh\"}",
+          "legendFormat": "{{instance}}",
+          "refId": "A"
+        }
+      ]
+    }
+  ],
+  "preload": false,
+  "refresh": "5s",
+  "schemaVersion": 39,
+  "tags": ["socket.io", "mesh"],
+  "templating": { "list": [] },
+  "time": { "from": "now-15m", "to": "now" },
+  "timepicker": {},
+  "timezone": "",
+  "title": "Socket.IO Mesh",
+  "uid": "socketio-mesh",
+  "version": 1,
+  "weekStart": ""
+}

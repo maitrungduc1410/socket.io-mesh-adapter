@@ -1,17 +1,98 @@
+name: socketio-mesh-monitoring
+
+# A self-contained 3-node Socket.IO mesh + discovery + Prometheus + Grafana.
+# Run with: `docker compose up --build`
+#   chat demo  : http://localhost:3000 / 3001 / 3002
+#   prometheus : http://localhost:9090
+#   grafana    : http://localhost:3030  (anonymous admin, dark theme)
+
+x-app-defaults: &app-defaults
+  build:
+    context: ../..
+    target: app
+  environment: &app-env
+    PORT: "3000"
+    MESH_WS_PORT: "4000"
+    MESH_DISCOVERY_SERVICE_ADDRESS: ws://discovery:8000
+    MESH_METRICS_PORT: "9090"
+  depends_on:
+    - discovery
+  restart: unless-stopped
+
 services:
-  app:
-    image: maitrungduc1410/socketio:app
-    ports:
-      - 3000:3000
+  discovery:
+    build:
+      context: ../..
+      target: discovery-svc
     environment:
-      - MESH_WS_IP=app
-      - MESH_DISCOVERY_SERVICE_ADDRESS=ws://discovery-svc:8000
+      PORT: "8000"
+      METRICS_PORT: "9091"
+    ports:
+      - "8000:8000"
+      - "9091:9091"
+    restart: unless-stopped
+
   app1:
-    image: maitrungduc1410/socketio:app
-    ports:
-      - 3001:3000
+    <<: *app-defaults
     environment:
-      - MESH_WS_IP=app1
-      - MESH_DISCOVERY_SERVICE_ADDRESS=ws://discovery-svc:8000
-  discovery-svc:
-    image: maitrungduc1410/socketio:discovery-svc
+      <<: *app-env
+      MESH_WS_IP: app1
+      MESH_INSTANCE: app1
+    ports:
+      - "3000:3000"
+
+  app2:
+    <<: *app-defaults
+    environment:
+      <<: *app-env
+      MESH_WS_IP: app2
+      MESH_INSTANCE: app2
+    ports:
+      - "3001:3000"
+
+  app3:
+    <<: *app-defaults
+    environment:
+      <<: *app-env
+      MESH_WS_IP: app3
+      MESH_INSTANCE: app3
+    ports:
+      - "3002:3000"
+
+  prometheus:
+    image: prom/prometheus:latest
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+    volumes:
+      - ./prometheus:/etc/prometheus:ro
+      - prometheus-data:/prometheus
+    ports:
+      - "9090:9090"
+    depends_on:
+      - app1
+      - app2
+      - app3
+      - discovery
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:latest
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: "Admin"
+      GF_AUTH_DISABLE_LOGIN_FORM: "true"
+      GF_USERS_DEFAULT_THEME: "dark"
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    ports:
+      - "3030:3000"
+    depends_on:
+      - prometheus
+    restart: unless-stopped
+
+volumes:
+  prometheus-data:
+  grafana-data:

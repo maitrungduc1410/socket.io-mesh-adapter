@@ -7,7 +7,7 @@ RUN npm install
 RUN npm run build
 
 FROM builder AS app
-CMD ["node", "server.js"]
+CMD ["npx", "tsx", "server.ts"]
 
 FROM builder AS discovery-svc
-CMD ["node", "dist/discovery-server.js"]
+CMD ["node", "dist/discovery/discovery-server.js"]

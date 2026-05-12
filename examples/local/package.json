@@ -13,7 +13,7 @@
   "license": "ISC",
   "dependencies": {
     "express": "^5.1.0",
-    "socket.io": "^4.8.1",
-    "socket.io-mesh-adapter": "^0.0.2"
+    "socket.io": "^4.8.3",
+    "socket.io-mesh-adapter": "^2.0.0"
   }
 }

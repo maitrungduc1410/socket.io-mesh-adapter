@@ -1,0 +1,28 @@
+global:
+  scrape_interval: 5s
+  evaluation_interval: 5s
+
+scrape_configs:
+  - job_name: socketio-mesh
+    metrics_path: /metrics
+    static_configs:
+      - targets:
+          - app1:9090
+          - app2:9090
+          - app3:9090
+        labels:
+          component: app
+
+  - job_name: socketio-mesh-discovery
+    metrics_path: /metrics
+    static_configs:
+      - targets:
+          - discovery:9091
+        labels:
+          component: discovery
+
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]
+        labels:
+          component: prometheus
