@@ -12,7 +12,7 @@ import {
 
 const log = createLogger("discovery-server");
 
-const PING_INTERVAL_MS = 15_000;
+const DEFAULT_PING_INTERVAL_MS = 15_000;
 
 export interface DiscoveryServerOptions {
   port: number;
@@ -29,6 +29,12 @@ export interface DiscoveryServerOptions {
    * dual-stack systems, falling back to `0.0.0.0`).
    */
   metricsHost?: string;
+  /**
+   * Interval for WebSocket protocol-level pings to each registered client.
+   * A client that misses two consecutive pongs is terminated. Defaults to
+   * 15s; shorten in tests.
+   */
+  pingIntervalMs?: number;
 }
 
 interface ServerEntry {
@@ -78,6 +84,7 @@ function createDiscoveryMetrics(): DiscoveryMetrics {
 export function startDiscoveryServer(opts: DiscoveryServerOptions): {
   close: () => Promise<void>;
 } {
+  const pingIntervalMs = opts.pingIntervalMs ?? DEFAULT_PING_INTERVAL_MS;
   const servers = new Map<string, ServerEntry>();
   const wss = new WebSocketServer({ port: opts.port });
 
@@ -172,7 +179,8 @@ export function startDiscoveryServer(opts: DiscoveryServerOptions): {
       log("ws error: %s", err.message);
     });
 
-    // Keep-alive ping
+    // Protocol-level ping keeps idle proxies from dropping the socket, and
+    // detects half-open clients that never send a FIN.
     const pingTimer = setInterval(() => {
       if (!isAlive) {
         log("client failed heartbeat, terminating");
@@ -190,7 +198,7 @@ export function startDiscoveryServer(opts: DiscoveryServerOptions): {
       } catch {
         // ignore
       }
-    }, PING_INTERVAL_MS);
+    }, pingIntervalMs);
     ws.on("close", () => clearInterval(pingTimer));
   });
 

@@ -16,10 +16,10 @@ src/
   index.ts                       Public surface: `createAdapter`, `shutdownAdapter`, re-exports.
   mesh-adapter.ts                Subclass of `ClusterAdapterWithHeartbeat`. Implements `doPublish`/`doPublishResponse` and wraps `fetchSockets`/`serverSideEmit`/`broadcastWithAck` for metrics.
   mesh-context.ts                Per-`wsPort` singleton. Owns `MeshTransport` + `DiscoveryClient` + (optional) `MetricsRegistry` + `/metrics` HTTP server. Routes inbound frames to the right namespace's adapter.
-  transport/mesh-transport.ts    WebSocket peer mesh. HELLO handshake, "lex-smaller UID initiates" rule, backpressure (`bufferedAmount`), per-peer reconnect with jitter.
+  transport/mesh-transport.ts    WebSocket peer mesh. HELLO handshake, "lex-smaller UID initiates" rule, backpressure (`bufferedAmount`), per-peer WS ping/pong, exponential-backoff reconnect. Live links survive discovery roster blips.
   discovery/
-    discovery-server.ts          Standalone WS discovery service. Optional `/metrics` (METRICS_PORT). Exported as the `discovery-server` bin.
-    discovery-client.ts          Reconnecting client used by `MeshContext`.
+    discovery-server.ts          Standalone WS discovery service. Optional `/metrics` (METRICS_PORT). WS ping/pong to clients. Exported as the `discovery-server` bin.
+    discovery-client.ts          Reconnecting client used by `MeshContext`. Ping-watchdog detects half-open discovery sockets.
     protocol.ts                  Wire types shared between client and server.
   metrics.ts                     `MetricsRegistry` interface + `NoopMetricsRegistry` + `PromMetricsRegistry` (lazy `require("prom-client")`).
   metrics-server.ts              Tiny Express `/metrics` + `/health` server. Shared by adapter and discovery server.
@@ -40,7 +40,7 @@ docs/PHASE2.md                   Roadmap for Phase 2 items (Plugin API, Discover
 
 | Command | Purpose |
 | --- | --- |
-| `npm test` | Run the full vitest suite (currently 17 tests across 6 files). |
+| `npm test` | Run the full vitest suite (currently 20 tests across 7 files). |
 | `npx tsc --noEmit` | Typecheck without emitting. Run after any non-trivial change. |
 | `npm run build` | Emit `dist/` (CJS). `prepublishOnly` calls this. |
 | `npm run dev` | Demo server on `:3000` / mesh `:4000` (`DEBUG=...` already set in script). |
@@ -75,6 +75,10 @@ Always run `npx tsc --noEmit` and `npm test` after edits to `src/`. Tests boot r
 6. **Port collisions in tests.** Each test file gets a random starting offset (`tests/helpers.ts`) because vitest workers can interleave port allocations. Don't hard-code ports in tests.
 
 7. **`scheduleHeartbeat` refreshes its timer on every `publish`.** Be careful before adding extra `publish` calls — they will *suppress* heartbeats, which can mask a missing-heartbeat bug.
+
+8. **Cluster-adapter heartbeats do NOT close WebSocket sockets.** `ClusterAdapterWithHeartbeat` only drops a peer from `nodesMap` (so `fetchSockets` / `broadcastWithAck` stop waiting). Half-open TCP/WS links are a separate problem and are handled by protocol-level `ws.ping()` in `MeshTransport` and the discovery server, plus the discovery client's ping watchdog. See `tests/keepalive.test.ts`.
+
+9. **Do not `dropPeer` when a uid leaves the discovery roster.** Discovery is bootstrap-only; a transient discovery disconnect used to flap every live mesh link via `left-discovery`. Keep the socket, clear `knownAddresses` so we don't reconnect a peer that truly left, and let ping/pong decide liveness.
 
 ## Coding conventions
 

@@ -14,6 +14,8 @@ interface PeerConnection {
   address: string;
   ws: WebSocket;
   direction: "outbound" | "inbound";
+  isAlive: boolean;
+  pingTimer: NodeJS.Timeout | null;
 }
 
 export interface MeshTransportOptions {
@@ -23,6 +25,16 @@ export interface MeshTransportOptions {
   bufferedAmountThreshold?: number;
   authToken?: string;
   metrics?: MetricsRegistry;
+  /**
+   * Interval for WebSocket protocol-level pings on each established peer
+   * link. A peer that misses one pong is terminated. Defaults to 15s;
+   * shorten in tests.
+   */
+  pingIntervalMs?: number;
+  /** Initial peer-reconnect delay in ms. Doubles up to `maxReconnectBackoffMs`. */
+  initialReconnectBackoffMs?: number;
+  /** Cap for peer-reconnect delay in ms. */
+  maxReconnectBackoffMs?: number;
 }
 
 /**
@@ -35,6 +47,9 @@ export interface MeshTransportOptions {
  */
 const HELLO_TIMEOUT_MS = 10_000;
 const DEFAULT_BUFFERED_THRESHOLD = 16 * 1024 * 1024;
+const DEFAULT_PING_INTERVAL_MS = 15_000;
+const DEFAULT_INITIAL_RECONNECT_MS = 1_000;
+const DEFAULT_MAX_RECONNECT_MS = 30_000;
 
 export class MeshTransport extends EventEmitter {
   readonly uid: ServerId;
@@ -43,6 +58,9 @@ export class MeshTransport extends EventEmitter {
   private readonly bufferedAmountThreshold: number;
   private readonly authToken?: string;
   private readonly metrics: MetricsRegistry;
+  private readonly pingIntervalMs: number;
+  private readonly initialReconnectBackoffMs: number;
+  private readonly maxReconnectBackoffMs: number;
 
   private wss: WebSocketServer;
   /** Established peer connections, keyed by remote uid. */
@@ -51,6 +69,8 @@ export class MeshTransport extends EventEmitter {
   private pendingInbound = new Map<WebSocket, NodeJS.Timeout>();
   /** Outbound reconnect timers, keyed by remote uid. */
   private reconnectTimers = new Map<ServerId, NodeJS.Timeout>();
+  /** Current reconnect backoff per peer (exponential). */
+  private reconnectBackoffMs = new Map<ServerId, number>();
   /** Outbound connections currently being established (WS created, not yet open). */
   private outboundConnecting = new Set<ServerId>();
   /** Latest known address per uid (from discovery), used for reconnects. */
@@ -66,6 +86,11 @@ export class MeshTransport extends EventEmitter {
       opts.bufferedAmountThreshold ?? DEFAULT_BUFFERED_THRESHOLD;
     this.authToken = opts.authToken;
     this.metrics = opts.metrics ?? NoopMetricsRegistry;
+    this.pingIntervalMs = opts.pingIntervalMs ?? DEFAULT_PING_INTERVAL_MS;
+    this.initialReconnectBackoffMs =
+      opts.initialReconnectBackoffMs ?? DEFAULT_INITIAL_RECONNECT_MS;
+    this.maxReconnectBackoffMs =
+      opts.maxReconnectBackoffMs ?? DEFAULT_MAX_RECONNECT_MS;
 
     this.wss = new WebSocketServer({ port: this.wsPort });
     this.wss.on("connection", (ws) => this.onInbound(ws));
@@ -75,8 +100,10 @@ export class MeshTransport extends EventEmitter {
 
   /**
    * Apply a fresh peer list from discovery. Initiates outbound connections to
-   * peers whose uid is greater than ours (lex-smaller-initiates rule), drops
-   * peers that are no longer present.
+   * peers whose uid is greater than ours (lex-smaller-initiates rule). Peers
+   * that disappear from the roster keep their live socket — discovery blips
+   * (proxy idle cuts, discovery restarts) must not tear down a healthy mesh
+   * link. Dead links are detected by the per-peer WebSocket ping instead.
    */
   applyPeerList(list: Array<{ serverId: ServerId; address: string }>): void {
     if (this.closed) return;
@@ -107,14 +134,26 @@ export class MeshTransport extends EventEmitter {
 
     for (const uid of [...this.peers.keys()]) {
       if (!seen.has(uid)) {
-        log("[%s] peer %s removed from discovery", this.uid, uid);
-        this.dropPeer(uid, "left-discovery");
+        // Keep the live socket. Clear the cached address so a later close
+        // does not auto-reconnect until the peer reappears in discovery.
+        log(
+          "[%s] peer %s absent from discovery roster; keeping live connection",
+          this.uid,
+          uid
+        );
+        this.knownAddresses.delete(uid);
       }
     }
     for (const uid of [...this.reconnectTimers.keys()]) {
       if (!seen.has(uid)) {
         clearTimeout(this.reconnectTimers.get(uid)!);
         this.reconnectTimers.delete(uid);
+        this.reconnectBackoffMs.delete(uid);
+        this.knownAddresses.delete(uid);
+      }
+    }
+    for (const uid of [...this.knownAddresses.keys()]) {
+      if (!seen.has(uid) && !this.peers.has(uid)) {
         this.knownAddresses.delete(uid);
       }
     }
@@ -189,8 +228,11 @@ export class MeshTransport extends EventEmitter {
           address,
           ws,
           direction: "outbound",
+          isAlive: true,
+          pingTimer: null,
         };
         this.peers.set(peerUid, peer);
+        this.reconnectBackoffMs.delete(peerUid);
         this.metrics.peerUp(peerUid);
         this.emit("peer-up", peerUid);
         this.wirePeer(peer);
@@ -205,6 +247,7 @@ export class MeshTransport extends EventEmitter {
         const existing = this.peers.get(peerUid);
         if (existing && existing.ws === ws) {
           log("[%s] outbound to %s closed", this.uid, peerUid);
+          this.clearPeerPing(existing);
           this.peers.delete(peerUid);
           this.metrics.peerDown(peerUid, "outbound-closed");
           this.emit("peer-down", peerUid);
@@ -230,7 +273,14 @@ export class MeshTransport extends EventEmitter {
     // side (we wait for the peer to reconnect to us instead).
     if (this.uid >= peerUid) return;
 
-    const delay = 1_000 + Math.floor(Math.random() * 1_000);
+    const base =
+      this.reconnectBackoffMs.get(peerUid) ?? this.initialReconnectBackoffMs;
+    const jitter = Math.floor(Math.random() * 250);
+    const delay = Math.min(base, this.maxReconnectBackoffMs) + jitter;
+    this.reconnectBackoffMs.set(
+      peerUid,
+      Math.min(base * 2, this.maxReconnectBackoffMs)
+    );
     log("[%s] scheduling reconnect to %s in %dms", this.uid, peerUid, delay);
     this.openOutbound(peerUid, address, delay);
   }
@@ -307,12 +357,14 @@ export class MeshTransport extends EventEmitter {
     }
 
     if (this.peers.has(payload.uid)) {
+      // Prefer the new inbound. The existing socket is often a half-open
+      // zombie that ping has not yet culled; rejecting here would block heal.
       log(
-        "[%s] already connected to %s, closing duplicate inbound",
+        "[%s] replacing existing connection to %s with new inbound",
         this.uid,
         payload.uid
       );
-      return false;
+      this.dropPeer(payload.uid, "replaced-by-inbound");
     }
 
     log("[%s] inbound peer identified as %s", this.uid, payload.uid);
@@ -323,8 +375,11 @@ export class MeshTransport extends EventEmitter {
       address: payload.address ?? "",
       ws,
       direction: "inbound",
+      isAlive: true,
+      pingTimer: null,
     };
     this.peers.set(payload.uid, peer);
+    this.reconnectBackoffMs.delete(payload.uid);
     this.metrics.peerUp(payload.uid);
     this.emit("peer-up", payload.uid);
     this.wirePeer(peer);
@@ -345,15 +400,71 @@ export class MeshTransport extends EventEmitter {
       }
     });
 
+    peer.ws.on("pong", () => {
+      peer.isAlive = true;
+    });
+
+    peer.pingTimer = setInterval(() => {
+      if (this.closed) return;
+      const current = this.peers.get(peer.uid);
+      if (!current || current.ws !== peer.ws) {
+        this.clearPeerPing(peer);
+        return;
+      }
+      if (!peer.isAlive) {
+        log(
+          "[%s] peer %s missed ping, terminating half-open socket",
+          this.uid,
+          peer.uid
+        );
+        try {
+          peer.ws.terminate();
+        } catch {
+          // ignore
+        }
+        return;
+      }
+      peer.isAlive = false;
+      try {
+        peer.ws.ping();
+      } catch {
+        // ignore
+      }
+    }, this.pingIntervalMs);
+    if (typeof peer.pingTimer.unref === "function") {
+      peer.pingTimer.unref();
+    }
+
     peer.ws.on("close", () => {
       const current = this.peers.get(peer.uid);
       if (current && current.ws === peer.ws) {
         log("[%s] peer %s connection closed (%s)", this.uid, peer.uid, peer.direction);
+        this.clearPeerPing(current);
         this.peers.delete(peer.uid);
         this.metrics.peerDown(peer.uid, `${peer.direction}-closed`);
         this.emit("peer-down", peer.uid);
+        // Outbound close already schedules reconnect via openOutbound's
+        // handler. Inbound peers rely on the lex-smaller side (or a fresh
+        // discovery roster) to re-initiate.
+        if (
+          peer.direction === "inbound" &&
+          !this.closed &&
+          this.knownAddresses.has(peer.uid) &&
+          this.uid < peer.uid
+        ) {
+          // Defensive: if somehow we ended up inbound despite being
+          // lex-smaller, still try to heal.
+          this.scheduleReconnect(peer.uid);
+        }
       }
     });
+  }
+
+  private clearPeerPing(peer: PeerConnection): void {
+    if (peer.pingTimer) {
+      clearInterval(peer.pingTimer);
+      peer.pingTimer = null;
+    }
   }
 
   private sendHello(ws: WebSocket): boolean {
@@ -444,6 +555,7 @@ export class MeshTransport extends EventEmitter {
   private dropPeer(uid: ServerId, reason: string): void {
     const peer = this.peers.get(uid);
     if (!peer) return;
+    this.clearPeerPing(peer);
     this.peers.delete(uid);
     try {
       peer.ws.close(1000, reason);
@@ -476,6 +588,7 @@ export class MeshTransport extends EventEmitter {
     for (const timer of this.reconnectTimers.values()) clearTimeout(timer);
     this.reconnectTimers.clear();
     this.outboundConnecting.clear();
+    this.reconnectBackoffMs.clear();
 
     for (const [ws, timer] of this.pendingInbound) {
       clearTimeout(timer);
@@ -488,6 +601,7 @@ export class MeshTransport extends EventEmitter {
     this.pendingInbound.clear();
 
     for (const [, peer] of this.peers) {
+      this.clearPeerPing(peer);
       try {
         peer.ws.close(1000, "transport-closed");
       } catch {

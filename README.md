@@ -38,6 +38,7 @@ Internally, the adapter extends the official [`ClusterAdapterWithHeartbeat`](htt
 - **Backpressure-aware** — slow peers are dropped before they cause out-of-memory.
 - **Identity handshake on every connection** — receivers know which peer is on the other end of an incoming socket.
 - **Exponential backoff reconnects** — both discovery and peer reconnects use jittered exponential backoff.
+- **WebSocket ping keepalives** — discovery and every peer link use protocol-level ping/pong so idle proxies cannot silently drop sockets, and half-open links self-heal.
 - **Built-in Prometheus metrics** — opt-in `/metrics` endpoint with peer counts, message rates by type, request latency histograms, and peer-drop reasons. Includes a pre-provisioned Grafana dashboard.
 
 # Installation
@@ -261,7 +262,7 @@ Each pod:
 
 1. Connects to the **discovery service** on startup and registers itself.
 2. Receives the current peer roster and **opens one WebSocket per peer** (only the lex-smaller UID initiates, so each pair has exactly one socket).
-3. After a single-frame `HELLO` handshake on each connection, peers exchange msgpack-encoded cluster messages (broadcast, fetchSockets, broadcastWithAck, serverSideEmit, heartbeats).
-4. Heartbeat timeouts mark unresponsive peers as dead. When a peer comes back, discovery republishes the roster and the connection is re-established with exponential backoff.
+3. After a single-frame `HELLO` handshake on each connection, peers exchange msgpack-encoded cluster messages (broadcast, fetchSockets, broadcastWithAck, serverSideEmit, heartbeats). Each peer link also runs WebSocket protocol ping/pong (~15s) so half-open sockets are detected even when no FIN arrives.
+4. Cluster-adapter heartbeat timeouts mark unresponsive peers as dead at the Socket.IO layer. Independently, a missed WebSocket pong tears down the transport socket and the lex-smaller side re-initiates with exponential backoff. Discovery roster blips do **not** cut live peer links — only ping failure or an explicit address change does.
 
 The discovery service is **not on the message hot path** — it is only consulted on roster changes (pod start/stop). All actual Socket.IO traffic flows directly peer-to-peer.
